@@ -56,6 +56,7 @@ def plot_return_distributions(results, selected_alphas, save_path=None):
     plt.figure(figsize=(10, 6))
     
     colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"]
+    max_density = 1.0  # Track maximum density of continuous series to set y-limit
     
     for idx, alpha in enumerate(selected_alphas):
         if alpha not in results:
@@ -64,22 +65,36 @@ def plot_return_distributions(results, selected_alphas, save_path=None):
         returns = results[alpha]["realized_returns"]
         color = colors[idx % len(colors)]
         
-        # Plot KDE
-        kde = gaussian_kde(returns)
-        x_grid = np.linspace(returns.min() - 0.01, returns.max() + 0.01, 200)
-        plt.plot(
-            x_grid, 
-            kde(x_grid), 
-            color=color, 
-            label=f"Alpha = {alpha:.2f} (Paper kappa = {results[alpha]['kappa_paper']:.2f})", 
-            linewidth=2.5
-        )
-        # Plot Histogram
-        plt.hist(returns, bins=30, density=True, alpha=0.15, color=color)
+        # Check if the return series has near-zero variance (delta function at 0)
+        if np.std(returns) < 1e-4:
+            plt.axvline(
+                x=np.mean(returns), 
+                color=color, 
+                linestyle="--", 
+                label=f"Alpha = {alpha:.2f} (Zero Portfolio)", 
+                linewidth=2.5
+            )
+        else:
+            # Plot KDE
+            kde = gaussian_kde(returns)
+            x_grid = np.linspace(returns.min() - 0.01, returns.max() + 0.01, 200)
+            kde_vals = kde(x_grid)
+            max_density = max(max_density, np.max(kde_vals))
+            
+            plt.plot(
+                x_grid, 
+                kde_vals, 
+                color=color, 
+                label=f"Alpha = {alpha:.2f} (Paper kappa = {results[alpha]['kappa_paper']:.2f})", 
+                linewidth=2.5
+            )
+            # Plot Histogram
+            plt.hist(returns, bins=30, density=True, alpha=0.15, color=color)
 
     plt.title("Realized Returns Distribution Comparison", fontsize=14, fontweight="bold")
     plt.xlabel("Portfolio Daily Returns", fontsize=12)
     plt.ylabel("Density", fontsize=12)
+    plt.ylim(0.0, max_density * 1.1)
     plt.legend(fontsize=10)
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.tight_layout()
