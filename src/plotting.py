@@ -230,8 +230,81 @@ def plot_individual_plots(results, alpha_grid, dates, asset_names, individual_di
             y=0.98
         )
         plt.tight_layout()
-        
         save_path = individual_dir / f"portfolio_alpha_{alpha:.2f}.png"
         plt.savefig(save_path, dpi=200, bbox_inches="tight")
         plt.close()
+
+
+def plot_monte_carlo_distributions(results, alpha_grid, mu, Sigma, Omega, T, save_path=None):
+    """
+    Plots the expected returns distribution under Monte Carlo simulations
+    for the first 8 portfolios in the alpha sweep, formatted as a 2x4 grid.
+    """
+    fig, axs = plt.subplots(2, 4, figsize=(18, 10))
+    axs = axs.ravel()  # Flatten into 8 subplots
+    
+    n_alphas = len(alpha_grid)
+    # Take the first 8 alphas
+    selected_alphas = alpha_grid[:8]
+    
+    # Run Monte Carlo simulation for N assets
+    N = len(mu)
+    M = 5000  # Number of scenario paths
+    
+    # Sample z uniformly on the surface of N-dimensional unit sphere
+    np.random.seed(42)
+    V = np.random.normal(0, 1, size=(M, N))
+    # Normalize to project onto unit sphere surface (each row has L2 norm = 1.0)
+    Z = V / np.linalg.norm(V, axis=1, keepdims=True)
+    
+    # Scale elements by the diagonal of Omega (which is diag(Sigma)/T)
+    omega_diag = np.diag(Omega)
+    omega_sqrt = np.sqrt(np.maximum(omega_diag, 0.0))
+    
+    for idx, alpha in enumerate(selected_alphas):
+        w = results[alpha]["weights"]
+        k_paper = results[alpha]["kappa_paper"]
+        
+        # Scenario expected return: w^T mu_sim = w^T mu + k_paper * (w * omega_sqrt) @ z^T
+        expected_base = w @ mu
+        scale_term = w * omega_sqrt
+        
+        # Daily expected returns for each scenario
+        scenario_returns = expected_base + k_paper * (Z @ scale_term)
+        
+        mean_val = np.mean(scenario_returns)
+        std_val = np.std(scenario_returns)
+        
+        ax = axs[idx]
+        
+        if np.isclose(k_paper, 0.0) or std_val < 1e-7:
+            # Special case for k = 0 (no spread)
+            ax.axvline(x=expected_base, color="steelblue", linewidth=2.5)
+            ax.set_xlim(0.0, 1.0)
+            ax.set_ylim(0.0, 1.0)
+            ax.set_title(f"k={k_paper:.3f} mean={mean_val:.4f} (no spread)", fontsize=10, fontweight="bold")
+        else:
+            # General case for k > 0 (normal-like distribution of expected returns)
+            # Plot density histogram
+            ax.hist(scenario_returns, bins=35, density=True, color="lightblue", alpha=0.7, edgecolor="none")
+            
+            # Plot KDE curve
+            kde = gaussian_kde(scenario_returns)
+            # Calculate range based on standard deviations to fit the curve nicely
+            x_min, x_max = scenario_returns.min() - 1.5*std_val, scenario_returns.max() + 1.5*std_val
+            x_grid = np.linspace(x_min, x_max, 250)
+            ax.plot(x_grid, kde(x_grid), color="darkred", linewidth=2.0)
+            
+            ax.set_title(f"k={k_paper:.3f} mean={mean_val:.4f} std={std_val:.4f}", fontsize=10, fontweight="bold")
+            
+        ax.grid(True, linestyle=":", alpha=0.5)
+        ax.tick_params(axis='both', which='major', labelsize=8)
+        
+    plt.suptitle("Monte Carlo Expected Return Distributions vs. Robustness Level (k)", fontsize=16, fontweight="bold", y=0.98)
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.close()
+
 

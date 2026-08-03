@@ -100,6 +100,17 @@ def main():
         asset_names,
         individual_dir=FIGURE_DIR / "individual"
     )
+
+    # Chart 6: Monte Carlo expected return scenario distributions (2x4 grid)
+    plotting.plot_monte_carlo_distributions(
+        results,
+        alpha_grid,
+        meta["mu"],
+        meta["Sigma"],
+        meta["Omega"],
+        T=meta["R"].shape[0],
+        save_path=FIGURE_DIR / "monte_carlo_distributions.png"
+    )
     print(f"   Plots saved to: {FIGURE_DIR}\n")
 
     # 5. Print a final summary report to the console
