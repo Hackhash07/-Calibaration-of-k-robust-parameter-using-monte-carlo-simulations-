@@ -83,6 +83,23 @@ def main():
         alpha_grid, 
         save_path=FIGURE_DIR / "portfolio_metrics.png"
     )
+
+    # Chart 4: Cumulative wealth index sweep (all together)
+    plotting.plot_cumulative_returns_sweep(
+        results,
+        alpha_grid,
+        dates,
+        save_path=FIGURE_DIR / "cumulative_returns.png"
+    )
+
+    # Chart 5: Individual portfolio dashboard plots for each alpha
+    plotting.plot_individual_plots(
+        results,
+        alpha_grid,
+        dates,
+        asset_names,
+        individual_dir=FIGURE_DIR / "individual"
+    )
     print(f"   Plots saved to: {FIGURE_DIR}\n")
 
     # 5. Print a final summary report to the console

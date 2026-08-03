@@ -46,6 +46,8 @@ output/*
 # Track generated plots and CSV tables
 output/figures/*
 !output/figures/*.png
+!output/figures/individual/
+!output/figures/individual/*.png
 output/weights/*
 !output/weights/*.csv
 output/returns/*

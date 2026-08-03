@@ -145,3 +145,93 @@ def plot_portfolio_metrics(results, alpha_grid, save_path=None):
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.close()
+
+
+def plot_cumulative_returns_sweep(results, alpha_grid, dates, save_path=None):
+    """
+    Plots the cumulative returns (wealth index starting at 1.0) of all portfolios
+    on a single chart using a color gradient from MVO to Max Robustness.
+    """
+    plt.figure(figsize=(10, 6))
+    
+    # Use colormap to color lines continuously
+    cmap = plt.get_cmap("plasma")
+    n_alphas = len(alpha_grid)
+    
+    for idx, alpha in enumerate(alpha_grid):
+        r = results[alpha]["realized_returns"]
+        # Wealth index: cumulative product of (1 + r)
+        wealth_index = np.cumprod(1 + r)
+        
+        # Color based on relative position in the grid
+        color = cmap(idx / max(1, n_alphas - 1))
+        
+        # Only label selected alpha thresholds to keep legend clean
+        label = f"Alpha = {alpha:.2f}" if idx in [0, int(n_alphas/4), int(n_alphas/2), int(3*n_alphas/4), n_alphas-1] else None
+        
+        plt.plot(dates, wealth_index, color=color, label=label, linewidth=1.5, alpha=0.8)
+
+    plt.title("Portfolio Cumulative Wealth Dynamics (Grid Sweep)", fontsize=14, fontweight="bold")
+    plt.xlabel("Date", fontsize=12)
+    plt.ylabel("Wealth Index (Start = 1.0)", fontsize=12)
+    plt.legend(fontsize=10, loc="upper left")
+    plt.grid(True, linestyle="--", alpha=0.5)
+    plt.tight_layout()
+    
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.close()
+
+
+def plot_individual_plots(results, alpha_grid, dates, asset_names, individual_dir):
+    """
+    Generates an individual 2-panel summary plot for each alpha value:
+    - Left: Bar chart of the asset weights.
+    - Right: Line chart of the cumulative return index.
+    """
+    individual_dir = Path(individual_dir)
+    individual_dir.mkdir(parents=True, exist_ok=True)
+    
+    for alpha in alpha_grid:
+        w = results[alpha]["weights"]
+        r = results[alpha]["realized_returns"]
+        k_paper = results[alpha]["kappa_paper"]
+        wealth_index = np.cumprod(1 + r)
+        
+        fig, axs = plt.subplots(1, 2, figsize=(15, 6))
+        
+        # 1. Weights Bar Chart (Only plot assets with weights > 1e-4)
+        active_indices = np.where(w > 1e-4)[0]
+        active_weights = w[active_indices]
+        active_names = [asset_names[i] for i in active_indices]
+        
+        # Sort by weight descending
+        sort_idx = np.argsort(active_weights)[::-1]
+        active_weights = active_weights[sort_idx]
+        active_names = [active_names[i] for i in sort_idx]
+        
+        axs[0].bar(active_names, active_weights, color="steelblue", edgecolor="black", alpha=0.8)
+        axs[0].set_title(f"Active Asset Weights (Total: {len(active_indices)})", fontsize=12, fontweight="bold")
+        axs[0].set_ylabel("Weight Allocation", fontsize=10)
+        axs[0].set_xticklabels(active_names, rotation=45, ha="right", fontsize=8)
+        axs[0].grid(True, axis="y", linestyle=":", alpha=0.6)
+        
+        # 2. Cumulative Returns Line Chart
+        axs[1].plot(dates, wealth_index, color="darkgreen", linewidth=2)
+        axs[1].set_title("Portfolio Cumulative Wealth Index", fontsize=12, fontweight="bold")
+        axs[1].set_xlabel("Date", fontsize=10)
+        axs[1].set_ylabel("Wealth (Start = 1.0)", fontsize=10)
+        axs[1].grid(True, linestyle=":", alpha=0.6)
+        
+        plt.suptitle(
+            f"Portfolio Dashboard: Alpha = {alpha:.2f} (Paper Kappa = {k_paper:.4f})", 
+            fontsize=15, 
+            fontweight="bold", 
+            y=0.98
+        )
+        plt.tight_layout()
+        
+        save_path = individual_dir / f"portfolio_alpha_{alpha:.2f}.png"
+        plt.savefig(save_path, dpi=200, bbox_inches="tight")
+        plt.close()
+
