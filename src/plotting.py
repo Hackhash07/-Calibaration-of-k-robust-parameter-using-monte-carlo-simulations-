@@ -92,25 +92,41 @@ def plot_return_distributions(results, selected_alphas, save_path=None):
     colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#9467bd", "#d62728"]
     max_density = 1.0  # floor so y-axis is never collapsed
 
+    # Relative threshold: any portfolio whose std is less than 5 % of the
+    # reference (MVO, alpha=0) std is degenerate and shown as a vertical line.
+    # This handles the case where weights are near-zero but not exactly zero
+    # (e.g. alpha=0.75), which produces a huge KDE spike that collapses the plot.
+    ref_alpha   = selected_alphas[0]
+    ref_std     = float(np.std(results[ref_alpha]["realized_returns"])) \
+                  if ref_alpha in results else 1.0
+    degen_thr   = max(ref_std * 0.05, 1e-6)   # 5 % of MVO std
+
     for idx, alpha in enumerate(selected_alphas):
         if alpha not in results:
             continue
 
         returns = results[alpha]["realized_returns"]
-        color = colors[idx % len(colors)]
+        color   = colors[idx % len(colors)]
+        std_r   = float(np.std(returns))
 
-        if np.std(returns) < 1e-4:
-            # Zero-weight portfolio: returns are all ~0 → show as vertical line
+        if std_r < degen_thr:
+            # Near-zero or zero portfolio → vertical dashed line
+            is_exactly_zero = std_r < 1e-6
+            lbl = (
+                f"Alpha = {alpha:.2f}  (Zero portfolio — "
+                r"$\kappa = \kappa_{\max}$)"
+                if is_exactly_zero
+                else f"Alpha = {alpha:.2f}  (κ = {results[alpha]['kappa_paper']:.3f}, near-zero)"
+            )
             plt.axvline(
                 x=float(np.mean(returns)),
                 color=color,
                 linestyle="--",
-                label=f"Alpha = {alpha:.2f}  (Zero portfolio — "
-                      r"$\kappa = \kappa_{\max}$)",
+                label=lbl,
                 linewidth=2.5,
             )
         else:
-            kde = gaussian_kde(returns)
+            kde    = gaussian_kde(returns)
             x_grid = np.linspace(returns.min() - 0.01, returns.max() + 0.01, 200)
             kde_vals = kde(x_grid)
             max_density = max(max_density, float(np.max(kde_vals)))
@@ -119,8 +135,7 @@ def plot_return_distributions(results, selected_alphas, save_path=None):
                 x_grid,
                 kde_vals,
                 color=color,
-                label=(f"Alpha = {alpha:.2f}  "
-                       f"(κ = {results[alpha]['kappa_paper']:.3f})"),
+                label=f"Alpha = {alpha:.2f}  (κ = {results[alpha]['kappa_paper']:.3f})",
                 linewidth=2.5,
             )
             plt.hist(returns, bins=30, density=True, alpha=0.15, color=color)
@@ -129,7 +144,7 @@ def plot_return_distributions(results, selected_alphas, save_path=None):
               fontsize=14, fontweight="bold")
     plt.xlabel("Portfolio Daily Returns", fontsize=12)
     plt.ylabel("Density", fontsize=12)
-    plt.ylim(0.0, max_density * 1.15)   # 15 % head-room above highest KDE peak
+    plt.ylim(0.0, max_density * 1.15)
     plt.legend(fontsize=10)
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.tight_layout()
