@@ -90,7 +90,9 @@ def compute_simple_returns(price_df):
 
     returns = price_df.pct_change()
 
-    returns = returns.dropna()
+    # pct_change() produces inf when a prior price is 0; dropna() does NOT
+    # remove inf values, so we must replace them explicitly first.
+    returns = returns.replace([np.inf, -np.inf], np.nan).dropna()
 
     return returns
 
