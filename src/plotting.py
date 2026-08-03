@@ -91,16 +91,20 @@ def plot_return_distributions(results, selected_alphas, save_path=None):
 
 def plot_portfolio_metrics(results, alpha_grid, save_path=None):
     """
-    Plots four key portfolio metrics as a function of alpha:
+    Plots six key portfolio metrics as a function of alpha:
     - Expected Daily Return
     - Daily Volatility
     - Daily Sharpe Ratio
     - Weight Concentration (Herfindahl-Hirschman Index, HHI)
+    - Gross Exposure (Sum of |w_i|)
+    - Active Asset Count (number of assets with w_i > 1e-4)
     """
     expected_returns = []
     volatilities = []
     sharpe_ratios = []
     hhi_values = []
+    gross_exposures = []
+    active_counts = []
     
     for alpha in alpha_grid:
         w = results[alpha]["weights"]
@@ -110,8 +114,10 @@ def plot_portfolio_metrics(results, alpha_grid, save_path=None):
         volatilities.append(np.std(r))
         sharpe_ratios.append(np.mean(r) / np.std(r) if np.std(r) > 1e-8 else 0.0)
         hhi_values.append(np.sum(w ** 2))
+        gross_exposures.append(np.sum(np.abs(w)))
+        active_counts.append(np.sum(w > 1e-4))
 
-    fig, axs = plt.subplots(2, 2, figsize=(12, 8))
+    fig, axs = plt.subplots(3, 2, figsize=(12, 12))
     
     # 1. Expected Return
     axs[0, 0].plot(alpha_grid, expected_returns, color="darkblue", marker="o", markersize=4)
@@ -128,16 +134,28 @@ def plot_portfolio_metrics(results, alpha_grid, save_path=None):
     # 3. Sharpe Ratio
     axs[1, 0].plot(alpha_grid, sharpe_ratios, color="darkgreen", marker="^", markersize=4)
     axs[1, 0].set_title("Daily Sharpe Ratio", fontsize=12, fontweight="bold")
-    axs[1, 0].set_xlabel(r"Robustness Level $\alpha$", fontsize=10)
     axs[1, 0].set_ylabel("Sharpe Ratio", fontsize=10)
     axs[1, 0].grid(True, linestyle=":", alpha=0.6)
     
     # 4. HHI Concentration
     axs[1, 1].plot(alpha_grid, hhi_values, color="purple", marker="d", markersize=4)
     axs[1, 1].set_title("Portfolio Concentration (HHI)", fontsize=12, fontweight="bold")
-    axs[1, 1].set_xlabel(r"Robustness Level $\alpha$", fontsize=10)
     axs[1, 1].set_ylabel("HHI (1/N = equal, 1 = concentrated)", fontsize=10)
     axs[1, 1].grid(True, linestyle=":", alpha=0.6)
+
+    # 5. Gross Exposure
+    axs[2, 0].plot(alpha_grid, gross_exposures, color="darkorange", marker="p", markersize=4)
+    axs[2, 0].set_title("Gross Exposure (Sum of |w_i|)", fontsize=12, fontweight="bold")
+    axs[2, 0].set_xlabel(r"Robustness Level $\alpha$", fontsize=10)
+    axs[2, 0].set_ylabel("Gross Exposure", fontsize=10)
+    axs[2, 0].grid(True, linestyle=":", alpha=0.6)
+
+    # 6. Active Asset Count
+    axs[2, 1].plot(alpha_grid, active_counts, color="teal", marker="x", markersize=4)
+    axs[2, 1].set_title("Number of Active Assets", fontsize=12, fontweight="bold")
+    axs[2, 1].set_xlabel(r"Robustness Level $\alpha$", fontsize=10)
+    axs[2, 1].set_ylabel("Active Asset Count", fontsize=10)
+    axs[2, 1].grid(True, linestyle=":", alpha=0.6)
     
     plt.suptitle("Portfolio Performance Metrics vs. Robustness Sweep", fontsize=14, fontweight="bold", y=0.98)
     plt.tight_layout()
@@ -244,8 +262,9 @@ def plot_monte_carlo_distributions(results, alpha_grid, mu, Sigma, Omega, T, sav
     axs = axs.ravel()  # Flatten into 8 subplots
     
     n_alphas = len(alpha_grid)
-    # Take the first 8 alphas
-    selected_alphas = alpha_grid[:8]
+    # Take 8 alphas evenly spaced across the entire grid (from index 0 to index 20)
+    selected_indices = [0, 2, 5, 8, 11, 14, 17, 20]
+    selected_alphas = [alpha_grid[i] for i in selected_indices]
     
     # Run Monte Carlo simulation for N assets
     N = len(mu)

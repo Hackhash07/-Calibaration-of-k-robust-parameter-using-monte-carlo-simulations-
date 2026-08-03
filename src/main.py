@@ -70,7 +70,7 @@ def main():
     # Chart 2: Return distributions comparing MVO, Rule of Thumb, and Robust
     # Finding alpha closest to 0.23 (half of average Sharpe ratio of 0.46)
     closest_rot_alpha = alpha_grid[np.argmin(np.abs(alpha_grid - 0.23))]
-    selected_alphas = [0.0, closest_rot_alpha, 0.5]
+    selected_alphas = [0.0, closest_rot_alpha, 0.5, 1.0]
     plotting.plot_return_distributions(
         results, 
         selected_alphas, 
