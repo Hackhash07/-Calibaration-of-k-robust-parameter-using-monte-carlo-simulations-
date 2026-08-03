@@ -89,7 +89,7 @@ def plot_return_distributions(results, selected_alphas, save_path=None):
     """
     plt.figure(figsize=(10, 6))
 
-    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"]
+    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#9467bd", "#d62728"]
     max_density = 1.0  # floor so y-axis is never collapsed
 
     for idx, alpha in enumerate(selected_alphas):
