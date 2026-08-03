@@ -35,6 +35,18 @@ ENV/
 # Project data and output (except gitkeeps)
 data/*
 !data/.gitkeep
+
+# Ignore output folder contents by default, but allow subfolders
 output/*
 !output/.gitkeep
-!output/**/.gitkeep
+!output/figures/
+!output/weights/
+!output/returns/
+
+# Track generated plots and CSV tables
+output/figures/*
+!output/figures/*.png
+output/weights/*
+!output/weights/*.csv
+output/returns/*
+!output/returns/*.csv
