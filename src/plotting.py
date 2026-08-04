@@ -594,3 +594,71 @@ def plot_model_summary(results, alpha_grid, asset_names, dates, sel_alphas,
         fig.savefig(save_path, dpi=200, bbox_inches="tight")
     plt.close(fig)
 
+
+# ---------------------------------------------------------------------------
+# 8. Full-grid realized return density by kappa (one panel per alpha level)
+# ---------------------------------------------------------------------------
+
+def plot_all_kappa_distributions(results, alpha_grid, save_path=None):
+    """
+    Recreates the original "Realized Daily Return Density by Kappa" figure:
+    one histogram + KDE subplot for EVERY alpha/kappa level in the sweep,
+    arranged in a 4-row grid.
+
+    Panel title shows:  k=X.XXXX   sigma_realized=XX.X%   active=N
+    """
+    n      = len(alpha_grid)
+    n_cols = 7
+    n_rows = int(np.ceil(n / n_cols))     # typically 3 rows for 21 points
+
+    # Reference std for degenerate threshold
+    ref_std   = float(np.std(results[alpha_grid[0]]["realized_returns"]))
+    degen_thr = max(ref_std * 0.05, 1e-6)
+
+    fig, axs = plt.subplots(
+        n_rows, n_cols,
+        figsize=(n_cols * 3.5, n_rows * 3.2),
+    )
+    axs = np.array(axs).ravel()
+
+    for idx, alpha in enumerate(alpha_grid):
+        ax      = axs[idx]
+        returns = results[alpha]["realized_returns"]
+        kp      = results[alpha]["kappa_paper"]
+        sigma_r = float(np.std(returns)) * 100   # as %
+        active  = int(np.sum(results[alpha]["weights"] > 1e-4))
+
+        title = (f"k={kp:.4f}   σ_realized={sigma_r:.1f}%   active={active}")
+
+        if float(np.std(returns)) < degen_thr:
+            # Zero portfolio — axvline
+            ax.axvline(x=float(np.mean(returns)), color="steelblue",
+                       linewidth=2.0, linestyle="--")
+            ax.set_title(title + "\n(zero portfolio)", fontsize=6.5,
+                         fontweight="bold")
+        else:
+            # Histogram
+            ax.hist(returns, bins=40, density=True,
+                    color="steelblue", alpha=0.55, edgecolor="none")
+            # KDE
+            kde   = gaussian_kde(returns)
+            xg    = np.linspace(returns.min() - 0.005,
+                                returns.max() + 0.005, 250)
+            ax.plot(xg, kde(xg), color="darkred", linewidth=1.5)
+            ax.set_title(title, fontsize=6.5, fontweight="bold")
+
+        ax.set_xlabel("Daily Return", fontsize=6)
+        ax.tick_params(labelsize=6)
+        ax.grid(True, linestyle=":", alpha=0.4)
+
+    # Hide any unused panels
+    for j in range(idx + 1, len(axs)):
+        axs[j].set_visible(False)
+
+    fig.suptitle("Realized Daily Return Density by Kappa",
+                 fontsize=15, fontweight="bold", y=1.002)
+    plt.tight_layout()
+
+    if save_path:
+        fig.savefig(save_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)

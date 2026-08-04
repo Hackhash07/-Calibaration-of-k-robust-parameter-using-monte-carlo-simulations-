@@ -97,7 +97,13 @@ def main():
         title="Symmetric Robust Portfolio (Goldfarb–Iyengar)",
         save_path=FIGURE_DIR / "symmetric_summary.png",
     )
-    print(f"   ✓ {FIGURE_DIR / 'symmetric_summary.png'}\n")
+    print(f"   ✓ {FIGURE_DIR / 'symmetric_summary.png'}")
+
+    plotting.plot_all_kappa_distributions(
+        sym_results, alpha_grid,
+        save_path=FIGURE_DIR / "symmetric_kappa_densities.png",
+    )
+    print(f"   ✓ {FIGURE_DIR / 'symmetric_kappa_densities.png'}\n")
 
     # ── 5. Asymmetric summary ─────────────────────────────────────────────────
     print(sep)
@@ -117,7 +123,13 @@ def main():
         title="Asymmetric Robust Portfolio (Semi-Variance Omega)",
         save_path=FIGURE_DIR / "asymmetric_summary.png",
     )
-    print(f"   ✓ {FIGURE_DIR / 'asymmetric_summary.png'}\n")
+    print(f"   ✓ {FIGURE_DIR / 'asymmetric_summary.png'}")
+
+    plotting.plot_all_kappa_distributions(
+        asym_results, alpha_grid,
+        save_path=FIGURE_DIR / "asymmetric_kappa_densities.png",
+    )
+    print(f"   ✓ {FIGURE_DIR / 'asymmetric_kappa_densities.png'}\n")
 
     # ── 6. Comparison plots ───────────────────────────────────────────────────
     print(sep)
