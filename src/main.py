@@ -104,6 +104,42 @@ def main():
     )
     print(f"   ✓ Symmetric plots → {FIGURE_DIR}\n")
 
+    # ── 4b. Asymmetric individual plots (mirror of symmetric) ─────────────────
+    print(sep)
+    print("STEP 4b — Asymmetric individual plots")
+    print(sep)
+
+    ASYM_DIR = FIGURE_DIR / "asymmetric"
+    ASYM_DIR.mkdir(parents=True, exist_ok=True)
+
+    plotting.plot_weight_sweep(
+        asym_results, alpha_grid, asset_names,
+        save_path=ASYM_DIR / "weight_sweep.png",
+    )
+    plotting.plot_return_distributions(
+        asym_results, sel_alphas,
+        save_path=ASYM_DIR / "return_distributions.png",
+    )
+    plotting.plot_portfolio_metrics(
+        asym_results, alpha_grid,
+        save_path=ASYM_DIR / "portfolio_metrics.png",
+    )
+    plotting.plot_cumulative_returns_sweep(
+        asym_results, alpha_grid, dates,
+        save_path=ASYM_DIR / "cumulative_returns.png",
+    )
+    plotting.plot_individual_plots(
+        asym_results, alpha_grid, dates, asset_names,
+        individual_dir=ASYM_DIR / "individual",
+    )
+    plotting.plot_monte_carlo_distributions(
+        asym_results, alpha_grid,
+        asym_meta["mu"], asym_meta["Sigma"], asym_meta["Omega_down"],
+        T=asym_meta["R"].shape[0],
+        save_path=ASYM_DIR / "monte_carlo_distributions.png",
+    )
+    print(f"   ✓ Asymmetric plots → {ASYM_DIR}\n")
+
     # ── 5. Comparison plots ───────────────────────────────────────────────────
     print(sep)
     print("STEP 5 — Symmetric vs Asymmetric comparison plots")
