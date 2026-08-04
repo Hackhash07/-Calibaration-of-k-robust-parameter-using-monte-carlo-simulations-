@@ -1,154 +1,158 @@
 """
 main.py
 
-Main entry point for running the robust portfolio calibration pipeline.
-Orchestrates data loading, statistics estimation, optimization sweep,
-results saving, plotting, and prints a final analysis report.
+Main entry point for the robust portfolio calibration pipeline.
+Runs BOTH the symmetric Goldfarb–Iyengar model and the asymmetric
+semi-variance model, then generates individual + comparison plots.
 """
 
 from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from config import (
-    FIGURE_DIR,
-    RETURN_DIR,
-    WEIGHT_DIR,
-)
+from config import FIGURE_DIR, RETURN_DIR, WEIGHT_DIR
 from experiment import run_calibration_experiment
+from asymmetric_experiment import run_asymmetric_experiment
 import plotting
+import comparison_plotting
+
+# Comparison figures go in their own sub-directory
+COMPARE_DIR = FIGURE_DIR / "comparison"
+COMPARE_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def main():
-    print("======================================================================")
-    print("Starting Robust Portfolio Calibration Pipeline")
-    print("======================================================================\n")
+    sep = "=" * 70
 
-    # 1. Run the calibration sweep
-    print("1. Running experiment sweep over alpha grid...")
-    results, meta = run_calibration_experiment()
-    print("   Experiment sweep completed successfully!\n")
+    # ── 1. Symmetric experiment ───────────────────────────────────────────────
+    print(sep)
+    print("STEP 1 — Symmetric Robust Calibration (Goldfarb–Iyengar)")
+    print(sep)
+    sym_results, sym_meta = run_calibration_experiment()
+    print("   ✓ Symmetric sweep complete\n")
 
-    alpha_grid = meta["alpha_grid"]
-    asset_names = meta["asset_names"]
-    dates = meta["dates"]
+    alpha_grid  = sym_meta["alpha_grid"]
+    asset_names = sym_meta["asset_names"]
+    dates       = sym_meta["dates"]
 
-    # 2. Format and save weights to CSV
-    print("2. Formatting and saving optimal weights...")
-    weights_records = []
-    for alpha in alpha_grid:
-        weights_records.append(results[alpha]["weights"])
-    
-    df_weights = pd.DataFrame(weights_records, index=alpha_grid, columns=asset_names)
-    df_weights.index.name = "Alpha"
-    weights_csv_path = WEIGHT_DIR / "portfolio_weights.csv"
-    df_weights.to_csv(weights_csv_path)
-    print(f"   Weights saved to: {weights_csv_path}\n")
+    # ── 2. Asymmetric experiment ──────────────────────────────────────────────
+    print(sep)
+    print("STEP 2 — Asymmetric Robust Calibration (Semi-Variance Omega)")
+    print(sep)
+    asym_results, asym_meta = run_asymmetric_experiment()
+    print("   ✓ Asymmetric sweep complete\n")
 
-    # 3. Format and save realized returns to CSV
-    print("3. Formatting and saving realized returns...")
-    returns_records = {}
-    for alpha in alpha_grid:
-        returns_records[f"alpha_{alpha:.2f}"] = results[alpha]["realized_returns"]
-        
-    df_returns = pd.DataFrame(returns_records, index=dates)
-    returns_csv_path = RETURN_DIR / "portfolio_returns.csv"
-    df_returns.to_csv(returns_csv_path)
-    print(f"   Returns saved to: {returns_csv_path}\n")
+    # ── 3. Save CSVs (symmetric as primary, asymmetric alongside) ────────────
+    print(sep)
+    print("STEP 3 — Saving weights and returns CSVs")
+    print(sep)
 
-    # 4. Generate and save plots
-    print("4. Generating visualization plots...")
-    
-    # Chart 1: Stacked weight dynamics sweep
+    for tag, results in [("symmetric", sym_results), ("asymmetric", asym_results)]:
+        df_w = pd.DataFrame(
+            [results[a]["weights"] for a in alpha_grid],
+            index=alpha_grid, columns=asset_names,
+        )
+        df_w.index.name = "Alpha"
+        p = WEIGHT_DIR / f"portfolio_weights_{tag}.csv"
+        df_w.to_csv(p)
+        print(f"   Weights ({tag}) → {p}")
+
+        df_r = pd.DataFrame(
+            {f"alpha_{a:.2f}": results[a]["realized_returns"] for a in alpha_grid},
+            index=dates,
+        )
+        p = RETURN_DIR / f"portfolio_returns_{tag}.csv"
+        df_r.to_csv(p)
+        print(f"   Returns ({tag}) → {p}")
+
+    print()
+
+    # ── 4. Individual symmetric plots (existing) ──────────────────────────────
+    print(sep)
+    print("STEP 4 — Symmetric individual plots")
+    print(sep)
+
+    closest_rot  = alpha_grid[np.argmin(np.abs(alpha_grid - 0.23))]
+    closest_75   = alpha_grid[np.argmin(np.abs(alpha_grid - 0.75))]
+    sel_alphas   = [0.0, closest_rot, 0.5, closest_75, 1.0]
+
     plotting.plot_weight_sweep(
-        results, 
-        alpha_grid, 
-        asset_names, 
-        save_path=FIGURE_DIR / "weight_sweep.png"
+        sym_results, alpha_grid, asset_names,
+        save_path=FIGURE_DIR / "weight_sweep.png",
     )
-    
-    # Chart 2: Return distributions comparing MVO, Rule of Thumb, and Robust
-    # Finding alpha closest to 0.23 (half of average Sharpe ratio of 0.46)
-    closest_rot_alpha = alpha_grid[np.argmin(np.abs(alpha_grid - 0.23))]
-    closest_75_alpha  = alpha_grid[np.argmin(np.abs(alpha_grid - 0.75))]
-    selected_alphas = [0.0, closest_rot_alpha, 0.5, closest_75_alpha, 1.0]
     plotting.plot_return_distributions(
-        results, 
-        selected_alphas, 
-        save_path=FIGURE_DIR / "return_distributions.png"
+        sym_results, sel_alphas,
+        save_path=FIGURE_DIR / "return_distributions.png",
     )
-    
-    # Chart 3: Performance metrics grid
     plotting.plot_portfolio_metrics(
-        results, 
-        alpha_grid, 
-        save_path=FIGURE_DIR / "portfolio_metrics.png"
+        sym_results, alpha_grid,
+        save_path=FIGURE_DIR / "portfolio_metrics.png",
     )
-
-    # Chart 4: Cumulative wealth index sweep (all together)
     plotting.plot_cumulative_returns_sweep(
-        results,
-        alpha_grid,
-        dates,
-        save_path=FIGURE_DIR / "cumulative_returns.png"
+        sym_results, alpha_grid, dates,
+        save_path=FIGURE_DIR / "cumulative_returns.png",
     )
-
-    # Chart 5: Individual portfolio dashboard plots for each alpha
     plotting.plot_individual_plots(
-        results,
-        alpha_grid,
-        dates,
-        asset_names,
-        individual_dir=FIGURE_DIR / "individual"
+        sym_results, alpha_grid, dates, asset_names,
+        individual_dir=FIGURE_DIR / "individual",
     )
-
-    # Chart 6: Monte Carlo expected return scenario distributions (2x4 grid)
     plotting.plot_monte_carlo_distributions(
-        results,
-        alpha_grid,
-        meta["mu"],
-        meta["Sigma"],
-        meta["Omega"],
-        T=meta["R"].shape[0],
-        save_path=FIGURE_DIR / "monte_carlo_distributions.png"
+        sym_results, alpha_grid,
+        sym_meta["mu"], sym_meta["Sigma"], sym_meta["Omega"],
+        T=sym_meta["R"].shape[0],
+        save_path=FIGURE_DIR / "monte_carlo_distributions.png",
     )
-    print(f"   Plots saved to: {FIGURE_DIR}\n")
+    print(f"   ✓ Symmetric plots → {FIGURE_DIR}\n")
 
-    # 5. Print a final summary report to the console
-    print("======================================================================")
-    print("PORTFOLIO PERFORMANCE SUMMARY ANALYSIS")
-    print("======================================================================")
-    print(f"{'Robustness (Alpha)':<20} | {'Ann. Return':<12} | {'Ann. Vol':<10} | {'Ann. Sharpe':<11} | {'HHI':<6} | {'Active Assets'}")
-    print("-" * 80)
-    
-    # Print statistics for MVO, Rule of Thumb (approx 0.23), and Robust (0.50)
-    report_alphas = [0.0, closest_rot_alpha, 0.50]
-    for alpha in report_alphas:
-        # Find closest alpha in actual grid
-        grid_alpha = alpha_grid[np.argmin(np.abs(alpha_grid - alpha))]
-        
-        w = results[grid_alpha]["weights"]
-        r = results[grid_alpha]["realized_returns"]
-        
-        # Annualized metrics (assuming daily returns)
-        ann_return = np.mean(r) * 252
-        ann_vol = np.std(r) * np.sqrt(252)
-        ann_sharpe = ann_return / ann_vol if ann_vol > 1e-8 else 0.0
-        
-        # Portfolio concentration (Herfindahl-Hirschman Index)
-        hhi = np.sum(w ** 2)
-        active_assets = sum(w > 1e-4)
-        
-        label = f"{grid_alpha:.2f}"
-        if grid_alpha == 0.0:
-            label += " (MVO)"
-        elif np.isclose(grid_alpha, closest_rot_alpha):
-            label += " (Rule of Thumb)"
-            
-        print(f"{label:<20} | {ann_return:>11.2%} | {ann_vol:>9.2%} | {ann_sharpe:>11.2f} | {hhi:>5.3f} | {active_assets:>13}")
-        
-    print("======================================================================\n")
-    print("Pipeline execution finished successfully!")
+    # ── 5. Comparison plots ───────────────────────────────────────────────────
+    print(sep)
+    print("STEP 5 — Symmetric vs Asymmetric comparison plots")
+    print(sep)
+
+    comparison_plotting.plot_comparison_metrics(
+        sym_results, asym_results, alpha_grid,
+        save_path=COMPARE_DIR / "cmp_metrics.png",
+    )
+    comparison_plotting.plot_comparison_weights(
+        sym_results, asym_results, alpha_grid, asset_names,
+        save_path=COMPARE_DIR / "cmp_weights.png",
+    )
+    comparison_plotting.plot_comparison_distributions(
+        sym_results, asym_results, sel_alphas,
+        save_path=COMPARE_DIR / "cmp_distributions.png",
+    )
+    comparison_plotting.plot_comparison_wealth(
+        sym_results, asym_results, alpha_grid, dates,
+        save_path=COMPARE_DIR / "cmp_wealth.png",
+    )
+    print(f"   ✓ Comparison plots → {COMPARE_DIR}\n")
+
+    # ── 6. Summary table ──────────────────────────────────────────────────────
+    print(sep)
+    print("PERFORMANCE SUMMARY  (annualised, in-sample)")
+    print(sep)
+    print(f"{'Model':<22} {'Alpha':<8} {'Ann.Ret':>9} {'Ann.Vol':>9} "
+          f"{'Sharpe':>8} {'HHI':>7} {'Active':>7}")
+    print("-" * 70)
+
+    for alpha in [0.0, closest_rot, 0.50]:
+        ga = alpha_grid[np.argmin(np.abs(alpha_grid - alpha))]
+        for tag, res in [("Symmetric", sym_results), ("Asymmetric", asym_results)]:
+            r   = res[ga]["realized_returns"]
+            w   = res[ga]["weights"]
+            ar  = np.mean(r) * 252
+            av  = np.std(r) * np.sqrt(252)
+            sh  = ar / av if av > 1e-8 else 0.0
+            hhi = np.sum(w ** 2)
+            act = int(np.sum(w > 1e-4))
+            lbl = f"α={ga:.2f}"
+            print(f"  {tag:<18} {lbl:<8} {ar:>9.2%} {av:>9.2%} "
+                  f"{sh:>8.2f} {hhi:>7.4f} {act:>7}")
+        print()
+
+    print(sep)
+    print("Pipeline finished successfully!")
+    print(sep)
 
 
 if __name__ == "__main__":

@@ -102,3 +102,60 @@ def generate_kappa_grid(kappa_max_raw, alpha_grid):
     """
 
     return alpha_grid * kappa_max_raw
+
+
+def compute_semivariance_omegas(R, T):
+    """
+    Asset-specific lower and upper semi-variance matrices for the asymmetric model.
+
+    For each asset i:
+        sv_down_i = E[r_{i,t}² | r_{i,t} < 0]   (expected squared negative return)
+        sv_up_i   = E[r_{i,t}² | r_{i,t} > 0]   (expected squared positive return)
+
+    Omega matrices (matching the Omega = diag(Sigma)/T convention):
+        Omega_down = diag(sv_down) / T
+        Omega_up   = diag(sv_up)   / T
+
+    Economic interpretation
+    -----------------------
+    Omega_down captures estimation risk specifically on the *loss* side.
+    An asset with low sv_down (mostly upside volatility) is penalised less
+    by the downside-protection penalty, so the asymmetric model preserves
+    its allocation even as kappa rises.
+    """
+    n_assets = R.shape[1]
+    sv_down = np.zeros(n_assets)
+    sv_up   = np.zeros(n_assets)
+
+    for i in range(n_assets):
+        ri = R[:, i]
+        neg_r = ri[ri < 0]
+        pos_r = ri[ri > 0]
+        sv_down[i] = np.mean(neg_r ** 2) if len(neg_r) > 0 else 1e-8
+        sv_up[i]   = np.mean(pos_r ** 2) if len(pos_r) > 0 else 1e-8
+
+    Omega_down = np.diag(sv_down) / T
+    Omega_up   = np.diag(sv_up)   / T
+
+    return Omega_down, Omega_up
+
+
+def compute_asymmetric_kappa_bound(mu, Omega_down):
+    """
+    Upper bound for kappa_paper in the asymmetric model.
+
+    Analogous to the symmetric bound ||SR||₂, but using the downside
+    uncertainty matrix:
+
+        kappa_max_asymmetric = ||Omega_down^{-1/2} mu||₂ / normalisation
+
+    Simplified (same convention as symmetric): uses lower-semi-variance-based
+    'Sharpe ratios':
+        SR_down_i = mu_i / sqrt(diag(Omega_down)_i * T)
+
+    The l2-norm of these gives the solver bound after multiplying by sqrt(T).
+    """
+    diag_down = np.diag(Omega_down)                    # = sv_down / T
+    sr_down   = mu / np.sqrt(np.maximum(diag_down, 1e-12))
+    return float(np.linalg.norm(sr_down))
+
