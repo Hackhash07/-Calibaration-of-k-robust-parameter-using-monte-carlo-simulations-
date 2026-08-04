@@ -1,12 +1,22 @@
 """
 main.py
 
-Main entry point for the robust portfolio calibration pipeline.
-Runs BOTH the symmetric Goldfarb–Iyengar model and the asymmetric
-semi-variance model, then generates individual + comparison plots.
+Main entry point.  Runs symmetric + asymmetric sweeps, saves CSVs,
+then produces FOUR consolidated figures — no per-alpha individual files.
+
+Output layout
+─────────────
+output/figures/
+  symmetric_summary.png          ← 6-panel symmetric model overview
+  asymmetric_summary.png         ← 6-panel asymmetric model overview
+  comparison/
+    cmp_metrics.png              ← 6 metric panels, both models overlaid
+    cmp_distributions.png        ← KDE per selected alpha, both models
+    cmp_wealth.png               ← wealth trajectories side-by-side
+    cmp_weights.png              ← stacked area side-by-side
+    cmp_asymmetry_analysis.png   ← WHY they differ: skew ratios + weight delta
 """
 
-from pathlib import Path
 import numpy as np
 import pandas as pd
 
@@ -16,7 +26,6 @@ from asymmetric_experiment import run_asymmetric_experiment
 import plotting
 import comparison_plotting
 
-# Comparison figures go in their own sub-directory
 COMPARE_DIR = FIGURE_DIR / "comparison"
 COMPARE_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -24,7 +33,7 @@ COMPARE_DIR.mkdir(parents=True, exist_ok=True)
 def main():
     sep = "=" * 70
 
-    # ── 1. Symmetric experiment ───────────────────────────────────────────────
+    # ── 1. Symmetric ──────────────────────────────────────────────────────────
     print(sep)
     print("STEP 1 — Symmetric Robust Calibration (Goldfarb–Iyengar)")
     print(sep)
@@ -35,18 +44,17 @@ def main():
     asset_names = sym_meta["asset_names"]
     dates       = sym_meta["dates"]
 
-    # ── 2. Asymmetric experiment ──────────────────────────────────────────────
+    # ── 2. Asymmetric ─────────────────────────────────────────────────────────
     print(sep)
     print("STEP 2 — Asymmetric Robust Calibration (Semi-Variance Omega)")
     print(sep)
     asym_results, asym_meta = run_asymmetric_experiment()
     print("   ✓ Asymmetric sweep complete\n")
 
-    # ── 3. Save CSVs (symmetric as primary, asymmetric alongside) ────────────
+    # ── 3. Save CSVs ──────────────────────────────────────────────────────────
     print(sep)
-    print("STEP 3 — Saving weights and returns CSVs")
+    print("STEP 3 — Saving CSVs")
     print(sep)
-
     for tag, results in [("symmetric", sym_results), ("asymmetric", asym_results)]:
         df_w = pd.DataFrame(
             [results[a]["weights"] for a in alpha_grid],
@@ -64,85 +72,56 @@ def main():
         p = RETURN_DIR / f"portfolio_returns_{tag}.csv"
         df_r.to_csv(p)
         print(f"   Returns ({tag}) → {p}")
-
     print()
 
-    # ── 4. Individual symmetric plots (existing) ──────────────────────────────
+    # ── Selected alpha checkpoints ────────────────────────────────────────────
+    closest_rot = alpha_grid[np.argmin(np.abs(alpha_grid - 0.23))]
+    closest_75  = alpha_grid[np.argmin(np.abs(alpha_grid - 0.75))]
+    sel_alphas  = [0.0, closest_rot, 0.5, closest_75, 1.0]
+
+    # ── 4. Symmetric summary (all key plots in ONE figure) ────────────────────
     print(sep)
-    print("STEP 4 — Symmetric individual plots")
+    print("STEP 4 — Symmetric consolidated summary")
     print(sep)
 
-    closest_rot  = alpha_grid[np.argmin(np.abs(alpha_grid - 0.23))]
-    closest_75   = alpha_grid[np.argmin(np.abs(alpha_grid - 0.75))]
-    sel_alphas   = [0.0, closest_rot, 0.5, closest_75, 1.0]
-
-    plotting.plot_weight_sweep(
-        sym_results, alpha_grid, asset_names,
-        save_path=FIGURE_DIR / "weight_sweep.png",
-    )
-    plotting.plot_return_distributions(
-        sym_results, sel_alphas,
-        save_path=FIGURE_DIR / "return_distributions.png",
-    )
-    plotting.plot_portfolio_metrics(
-        sym_results, alpha_grid,
-        save_path=FIGURE_DIR / "portfolio_metrics.png",
-    )
-    plotting.plot_cumulative_returns_sweep(
-        sym_results, alpha_grid, dates,
-        save_path=FIGURE_DIR / "cumulative_returns.png",
-    )
-    plotting.plot_individual_plots(
-        sym_results, alpha_grid, dates, asset_names,
-        individual_dir=FIGURE_DIR / "individual",
-    )
-    plotting.plot_monte_carlo_distributions(
-        sym_results, alpha_grid,
-        sym_meta["mu"], sym_meta["Sigma"], sym_meta["Omega"],
+    plotting.plot_model_summary(
+        results=sym_results,
+        alpha_grid=alpha_grid,
+        asset_names=asset_names,
+        dates=dates,
+        sel_alphas=sel_alphas,
+        mu=sym_meta["mu"],
+        Sigma=sym_meta["Sigma"],
+        Omega=sym_meta["Omega"],
         T=sym_meta["R"].shape[0],
-        save_path=FIGURE_DIR / "monte_carlo_distributions.png",
+        title="Symmetric Robust Portfolio (Goldfarb–Iyengar)",
+        save_path=FIGURE_DIR / "symmetric_summary.png",
     )
-    print(f"   ✓ Symmetric plots → {FIGURE_DIR}\n")
+    print(f"   ✓ {FIGURE_DIR / 'symmetric_summary.png'}\n")
 
-    # ── 4b. Asymmetric individual plots (mirror of symmetric) ─────────────────
+    # ── 5. Asymmetric summary ─────────────────────────────────────────────────
     print(sep)
-    print("STEP 4b — Asymmetric individual plots")
+    print("STEP 5 — Asymmetric consolidated summary")
     print(sep)
 
-    ASYM_DIR = FIGURE_DIR / "asymmetric"
-    ASYM_DIR.mkdir(parents=True, exist_ok=True)
-
-    plotting.plot_weight_sweep(
-        asym_results, alpha_grid, asset_names,
-        save_path=ASYM_DIR / "weight_sweep.png",
-    )
-    plotting.plot_return_distributions(
-        asym_results, sel_alphas,
-        save_path=ASYM_DIR / "return_distributions.png",
-    )
-    plotting.plot_portfolio_metrics(
-        asym_results, alpha_grid,
-        save_path=ASYM_DIR / "portfolio_metrics.png",
-    )
-    plotting.plot_cumulative_returns_sweep(
-        asym_results, alpha_grid, dates,
-        save_path=ASYM_DIR / "cumulative_returns.png",
-    )
-    plotting.plot_individual_plots(
-        asym_results, alpha_grid, dates, asset_names,
-        individual_dir=ASYM_DIR / "individual",
-    )
-    plotting.plot_monte_carlo_distributions(
-        asym_results, alpha_grid,
-        asym_meta["mu"], asym_meta["Sigma"], asym_meta["Omega_down"],
+    plotting.plot_model_summary(
+        results=asym_results,
+        alpha_grid=alpha_grid,
+        asset_names=asset_names,
+        dates=dates,
+        sel_alphas=sel_alphas,
+        mu=asym_meta["mu"],
+        Sigma=asym_meta["Sigma"],
+        Omega=asym_meta["Omega_down"],
         T=asym_meta["R"].shape[0],
-        save_path=ASYM_DIR / "monte_carlo_distributions.png",
+        title="Asymmetric Robust Portfolio (Semi-Variance Omega)",
+        save_path=FIGURE_DIR / "asymmetric_summary.png",
     )
-    print(f"   ✓ Asymmetric plots → {ASYM_DIR}\n")
+    print(f"   ✓ {FIGURE_DIR / 'asymmetric_summary.png'}\n")
 
-    # ── 5. Comparison plots ───────────────────────────────────────────────────
+    # ── 6. Comparison plots ───────────────────────────────────────────────────
     print(sep)
-    print("STEP 5 — Symmetric vs Asymmetric comparison plots")
+    print("STEP 6 — Symmetric vs Asymmetric comparison plots")
     print(sep)
 
     comparison_plotting.plot_comparison_metrics(
@@ -161,16 +140,26 @@ def main():
         sym_results, asym_results, alpha_grid, dates,
         save_path=COMPARE_DIR / "cmp_wealth.png",
     )
+    # KEY: asymmetry diagnostic — WHY the models differ
+    comparison_plotting.plot_asymmetry_analysis(
+        sym_results=sym_results,
+        asym_results=asym_results,
+        alpha_grid=alpha_grid,
+        asset_names=asset_names,
+        Sigma=sym_meta["Sigma"],
+        Omega_down=asym_meta["Omega_down"],
+        T=sym_meta["R"].shape[0],
+        save_path=COMPARE_DIR / "cmp_asymmetry_analysis.png",
+    )
     print(f"   ✓ Comparison plots → {COMPARE_DIR}\n")
 
-    # ── 6. Summary table ──────────────────────────────────────────────────────
+    # ── 7. Summary table ──────────────────────────────────────────────────────
     print(sep)
     print("PERFORMANCE SUMMARY  (annualised, in-sample)")
     print(sep)
     print(f"{'Model':<22} {'Alpha':<8} {'Ann.Ret':>9} {'Ann.Vol':>9} "
           f"{'Sharpe':>8} {'HHI':>7} {'Active':>7}")
     print("-" * 70)
-
     for alpha in [0.0, closest_rot, 0.50]:
         ga = alpha_grid[np.argmin(np.abs(alpha_grid - alpha))]
         for tag, res in [("Symmetric", sym_results), ("Asymmetric", asym_results)]:
@@ -181,11 +170,9 @@ def main():
             sh  = ar / av if av > 1e-8 else 0.0
             hhi = np.sum(w ** 2)
             act = int(np.sum(w > 1e-4))
-            lbl = f"α={ga:.2f}"
-            print(f"  {tag:<18} {lbl:<8} {ar:>9.2%} {av:>9.2%} "
+            print(f"  {tag:<18} α={ga:.2f}  {ar:>9.2%} {av:>9.2%} "
                   f"{sh:>8.2f} {hhi:>7.4f} {act:>7}")
         print()
-
     print(sep)
     print("Pipeline finished successfully!")
     print(sep)

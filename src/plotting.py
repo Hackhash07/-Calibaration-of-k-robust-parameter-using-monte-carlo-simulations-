@@ -419,3 +419,178 @@ def plot_monte_carlo_distributions(results, alpha_grid, mu, Sigma, Omega,
     if save_path:
         plt.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.close()
+
+
+# ---------------------------------------------------------------------------
+# 7. Consolidated single-page model summary  (NEW — replaces individual files)
+# ---------------------------------------------------------------------------
+
+def plot_model_summary(results, alpha_grid, asset_names, dates, sel_alphas,
+                       mu, Sigma, Omega, T, title, save_path=None):
+    """
+    One large figure with EIGHT panels covering every key aspect of one model:
+
+    Row 1  [col 0-1]  Weight sweep (stacked area, full width)
+    Row 2  [col 0]    Return distributions (selected alphas)
+           [col 1]    Cumulative wealth (log scale, full sweep)
+    Row 3  [0,0]      Expected Return vs alpha
+           [0,1]      Volatility vs alpha
+           [1,0]      Sharpe Ratio vs alpha
+           [1,1]      Gross Exposure vs alpha
+    Row 4  Monte Carlo 2×4 grid  (full width)
+    """
+    import matplotlib.gridspec as gridspec
+    from scipy.stats import gaussian_kde
+
+    n_assets = len(asset_names)
+    n_alphas = len(alpha_grid)
+
+    # ── Precompute metrics ────────────────────────────────────────────────────
+    exp_rets, vols, sharpes, gross_exps = [], [], [], []
+    for alpha in alpha_grid:
+        r   = results[alpha]["realized_returns"]
+        w   = results[alpha]["weights"]
+        vol = float(np.std(r))
+        exp_rets.append(float(np.mean(r)))
+        vols.append(vol)
+        sharpes.append(float(np.mean(r)) / vol if vol > 1e-8 else 0.0)
+        gross_exps.append(float(np.sum(np.abs(w))))
+
+    # ── Reference std for degenerate threshold ────────────────────────────────
+    ref_std   = float(np.std(results[alpha_grid[0]]["realized_returns"]))
+    degen_thr = max(ref_std * 0.05, 1e-6)
+
+    # ── Figure layout ─────────────────────────────────────────────────────────
+    fig = plt.figure(figsize=(18, 26))
+    gs  = gridspec.GridSpec(
+        4, 4,
+        figure=fig,
+        hspace=0.38,
+        wspace=0.30,
+        height_ratios=[1.5, 1.4, 1.2, 1.4],
+    )
+
+    # ── Panel 1: Weight sweep (spans all 4 cols) ──────────────────────────────
+    ax_w = fig.add_subplot(gs[0, :])
+    W    = np.zeros((n_assets, n_alphas))
+    for j, alpha in enumerate(alpha_grid):
+        W[:, j] = np.maximum(results[alpha]["weights"], 0.0)
+    cmap_tab = plt.get_cmap("tab20")
+    cols20   = [cmap_tab(i / max(n_assets - 1, 1)) for i in range(n_assets)]
+    ax_w.stackplot(alpha_grid, W, labels=asset_names, colors=cols20)
+    ax_w.set_xlim(0.0, 1.0)
+    ax_w.set_ylim(0.0, max(W.sum(axis=0).max() * 1.05, 1.05))
+    ax_w.set_title("Portfolio Weight Dynamics across Robustness Sweep",
+                   fontsize=12, fontweight="bold")
+    ax_w.set_xlabel(r"Robustness Level $\alpha$", fontsize=10)
+    ax_w.set_ylabel("Weight Allocation", fontsize=10)
+    ax_w.legend(loc="upper right", bbox_to_anchor=(1.12, 1.0),
+                ncol=1, fontsize=7, framealpha=0.8)
+    ax_w.grid(True, linestyle=":", alpha=0.4)
+
+    # ── Panel 2: Return distributions (left, row 2, spans 2 cols) ─────────────
+    ax_d = fig.add_subplot(gs[1, :2])
+    colors5 = ["#1f77b4", "#ff7f0e", "#2ca02c", "#9467bd", "#d62728"]
+    max_dens = 1.0
+    for idx, alpha in enumerate(sel_alphas):
+        if alpha not in results:
+            continue
+        ret   = results[alpha]["realized_returns"]
+        color = colors5[idx % len(colors5)]
+        if np.std(ret) < degen_thr:
+            ax_d.axvline(x=float(np.mean(ret)), color=color, linestyle="--",
+                         linewidth=2.0,
+                         label=f"α={alpha:.2f} (zero portfolio)")
+        else:
+            kde    = gaussian_kde(ret)
+            xg     = np.linspace(ret.min() - 0.01, ret.max() + 0.01, 200)
+            kv     = kde(xg)
+            max_dens = max(max_dens, float(np.max(kv)))
+            ax_d.plot(xg, kv, color=color, linewidth=2.0,
+                      label=f"α={alpha:.2f} (κ={results[alpha]['kappa_paper']:.3f})")
+            ax_d.fill_between(xg, kv, alpha=0.08, color=color)
+    ax_d.set_ylim(0, max_dens * 1.15)
+    ax_d.set_title("Realized Return Distributions", fontsize=12, fontweight="bold")
+    ax_d.set_xlabel("Daily Returns", fontsize=10)
+    ax_d.set_ylabel("Density", fontsize=10)
+    ax_d.legend(fontsize=8, framealpha=0.7)
+    ax_d.grid(True, linestyle="--", alpha=0.4)
+
+    # ── Panel 3: Cumulative wealth (right, row 2, spans 2 cols) ───────────────
+    ax_c = fig.add_subplot(gs[1, 2:])
+    cmap_p   = plt.get_cmap("plasma")
+    lbl_set  = {0, n_alphas // 4, n_alphas // 2, 3 * n_alphas // 4, n_alphas - 1}
+    for idx, alpha in enumerate(alpha_grid):
+        r      = results[alpha]["realized_returns"]
+        wealth = np.cumprod(1.0 + r)
+        color  = cmap_p(idx / max(1, n_alphas - 1))
+        lbl    = f"α={alpha:.2f}" if idx in lbl_set else None
+        ax_c.plot(dates, wealth, color=color, linewidth=1.2,
+                  alpha=0.85, label=lbl)
+    ax_c.set_yscale("log")
+    ax_c.set_title("Cumulative Wealth Index (log scale)", fontsize=12, fontweight="bold")
+    ax_c.set_xlabel("Date", fontsize=10)
+    ax_c.set_ylabel("Wealth (start=1, log)", fontsize=10)
+    ax_c.legend(fontsize=8, loc="upper left", framealpha=0.7)
+    ax_c.grid(True, linestyle="--", alpha=0.4, which="both")
+
+    # ── Panels 4-7: Four metric panels (row 3) ────────────────────────────────
+    metric_specs = [
+        (gs[2, 0], exp_rets,   "darkblue",   "Expected Daily Return",        "Return"),
+        (gs[2, 1], vols,       "darkred",     "Daily Volatility",             "Std Dev"),
+        (gs[2, 2], sharpes,    "darkgreen",   "Daily Sharpe Ratio",           "Sharpe"),
+        (gs[2, 3], gross_exps, "darkorange",  r"Gross Exposure ($\Sigma|w|$)", "Exposure"),
+    ]
+    for gs_cell, vals, color, mtitle, ylabel in metric_specs:
+        ax = fig.add_subplot(gs_cell)
+        ax.plot(alpha_grid, vals, color=color, marker="o", markersize=3, linewidth=1.8)
+        ax.set_title(mtitle, fontsize=10, fontweight="bold")
+        ax.set_xlabel(r"$\alpha$", fontsize=9)
+        ax.set_ylabel(ylabel, fontsize=9)
+        ax.grid(True, linestyle=":", alpha=0.5)
+
+    # ── Panels 8: Monte Carlo 2×4 grid (row 4, all cols) ─────────────────────
+    gs_mc = gridspec.GridSpecFromSubplotSpec(2, 4, subplot_spec=gs[3, :],
+                                             hspace=0.55, wspace=0.35)
+    N_MC = 5000
+    N    = len(mu)
+    np.random.seed(42)
+    V    = np.random.normal(0.0, 1.0, size=(N_MC, N))
+    Z    = V / np.linalg.norm(V, axis=1, keepdims=True)
+    omega_sqrt = np.sqrt(np.maximum(np.diag(Omega), 0.0))
+
+    raw_idx    = np.linspace(0, n_alphas - 1, 8).round().astype(int)
+    sel_mc     = [alpha_grid[i] for i in raw_idx]
+
+    for idx, alpha in enumerate(sel_mc):
+        ax_mc = fig.add_subplot(gs_mc[idx // 4, idx % 4])
+        w      = results[alpha]["weights"]
+        kp     = results[alpha]["kappa_paper"]
+        base   = float(w @ mu)
+        sc     = w * omega_sqrt
+        scen   = base + kp * (Z @ sc)
+        mn, sd = float(np.mean(scen)), float(np.std(scen))
+
+        if np.isclose(kp, 0.0, atol=1e-9) or sd < 1e-7:
+            ax_mc.axvline(x=base, color="steelblue", linewidth=2.0)
+            ax_mc.set_title(f"k={kp:.3f} (no spread)", fontsize=8, fontweight="bold")
+            span = max(abs(base) * 0.1, 1e-4)
+            ax_mc.set_xlim(base - span, base + span)
+        else:
+            ax_mc.hist(scen, bins=30, density=True, color="lightblue",
+                       alpha=0.7, edgecolor="none")
+            kde2   = gaussian_kde(scen)
+            xg2    = np.linspace(scen.min() - 1.5*sd, scen.max() + 1.5*sd, 200)
+            ax_mc.plot(xg2, kde2(xg2), color="darkred", linewidth=1.8)
+            ax_mc.set_title(f"k={kp:.3f}  μ={mn:.4f}  σ={sd:.4f}",
+                            fontsize=7.5, fontweight="bold")
+        ax_mc.tick_params(labelsize=7)
+        ax_mc.grid(True, linestyle=":", alpha=0.4)
+
+    # ── Super-title ────────────────────────────────────────────────────────────
+    fig.suptitle(title, fontsize=16, fontweight="bold", y=0.995)
+
+    if save_path:
+        fig.savefig(save_path, dpi=200, bbox_inches="tight")
+    plt.close(fig)
+
